@@ -1,6 +1,6 @@
 from langchain.agents import create_agent
 from langchain_mistralai import ChatMistralAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from tools import web_search, scrap_url
 from dotenv import load_dotenv
@@ -63,3 +63,15 @@ critic_prompt = ChatPromptTemplate.from_messages([
 
 
 critic_chain = critic_prompt | llm | StrOutputParser()
+
+
+
+qa_prompt = ChatPromptTemplate.from_messages([
+    ("system",
+     "You answer follow-up questions about a research report. Base your answer on "
+     "the context below. If the context does not cover the question, say so clearly "
+     "instead of guessing. Be concise and use markdown.\n\nContext:\n{context}"),
+    MessagesPlaceholder("history"),
+    ("human", "{question}"),
+])
+qa_chain = qa_prompt | llm | StrOutputParser()
