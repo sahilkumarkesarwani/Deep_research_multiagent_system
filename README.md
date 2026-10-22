@@ -1,5 +1,9 @@
 # 🔎 Deep Research Multi-Agent System
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR-APP-NAME.streamlit.app)
+
+🌐 **Live demo:** (https://multiagentresearchtool.streamlit.app/)
+
 A multi-agent research engine that takes any topic, searches the web, reads the best source, writes a structured report, and then critiques its own work. It ships with a **Streamlit web UI** and a **follow-up chat**, so you can ask questions about the finished research.
 
 Built with [LangChain](https://www.langchain.com/), [Mistral AI](https://mistral.ai/) and [Tavily](https://tavily.com/).
@@ -147,6 +151,23 @@ A larger Mistral model generally gives better reports and answers.
 | Web search for follow-ups | Lets the chat look up fresh information for each question |
 
 **Constants** at the top of `app.py`: `MAX_RETRIES`, `MAX_HISTORY`, `MAX_Q_LEN`, `MAX_CONTEXT_CHARS`, `MAX_TURNS`, `REQUIRED_KEYS`.
+
+---
+
+## ☁️ Deploy your own
+
+You can host your own copy for free on [Streamlit Community Cloud](https://share.streamlit.io):
+
+1. Fork this repository.
+2. On Streamlit Community Cloud, click **Create app** and select your fork, the `main` branch and `app.py` as the main file.
+3. Open **Advanced settings → Secrets** and add your keys:
+
+   ```toml
+   MISTRAL_API_KEY = "your_mistral_api_key_here"
+   TAVILY_API_KEY = "your_tavily_api_key_here"
+   ```
+
+4. Click **Deploy**.
 
 ---
 
