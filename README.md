@@ -1,6 +1,6 @@
 # 🔎 Deep Research Multi-Agent System
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR-APP-NAME.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://multiagentresearchtool.streamlit.app/)
 
 🌐 **Live demo:** (https://multiagentresearchtool.streamlit.app/)
 
