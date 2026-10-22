@@ -24,6 +24,11 @@ except Exception:
     st.code(traceback.format_exc())
     st.stop()
 
+try:  # follow-up Q&A chain (add it to agents.py, see the snippet shown in the app)
+    from agents import qa_chain
+except ImportError:
+    qa_chain = None
+
 # ---------------------------------------------------------------- config
 REQUIRED_KEYS = ["MISTRAL_API_KEY", "TAVILY_API_KEY"]  # edit to match your .env
 MIN_LEN, MAX_LEN = 3, 300      # topic length limits
@@ -31,12 +36,36 @@ MAX_RETRIES = 2                # automatic retries per step (transient errors on
 MAX_HISTORY = 15               # runs kept in memory
 STEP_KEYS = ["search_results", "scraped_content", "report", "critique"]
 OPTIONAL_STEPS = {1, 3}        # pipeline continues if these fail (Read, Critique)
+MAX_Q_LEN = 500                # follow-up question length limit
+MAX_CONTEXT_CHARS = 12000      # research text sent with each follow-up
+MAX_TURNS = 8                  # previous chat turns sent to the model
+
+QA_SNIPPET = '''# add to agents.py (replace `llm` with the model variable you already use)
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+
+qa_prompt = ChatPromptTemplate.from_messages([
+    ("system",
+     "You answer follow-up questions about a research report. Base your answer on "
+     "the context below. If the context does not cover the question, say so clearly "
+     "instead of guessing. Be concise and use markdown.\\n\\nContext:\\n{context}"),
+    MessagesPlaceholder("history"),
+    ("human", "{question}"),
+])
+qa_chain = qa_prompt | llm | StrOutputParser()
+'''
 
 STEPS = [
     ("🔎", "Search", "Finding recent sources"),
     ("🌐", "Read", "Scraping the best source"),
     ("✍️", "Write", "Drafting the report"),
     ("🧐", "Critique", "Reviewing quality"),
+]
+
+EXAMPLES = [
+    "Solid-state battery breakthroughs",
+    "State of open-source LLMs",
+    "Impact of GLP-1 drugs on healthcare",
 ]
 
 # ---------------------------------------------------------------- styling
@@ -185,7 +214,7 @@ def render_tracker(ph, current=None, timings=None, failed=None, skipped=()):
 
 # ---------------------------------------------------------------- pipeline
 def new_state(topic):
-    return {"topic": topic, "timings": {}, "warnings": {}, "error": None}
+    return {"topic": topic, "timings": {}, "warnings": {}, "error": None, "chat": []}
 
 
 def run_step(i, state, scrape_limit):
@@ -267,6 +296,59 @@ def run_pipeline(state, start, scrape_limit, timeout, tracker_ph, progress, stat
     return state
 
 
+# ---------------------------------------------------------------- follow-up Q&A
+def build_context(res, extra=""):
+    parts = [f"# Report\n{res.get('report', '')}"]
+    if extra:
+        parts.append(f"# Fresh web search for this question\n{extra}")
+    if res.get("search_results"):
+        parts.append(f"# Search results\n{res['search_results']}")
+    if res.get("scraped_content"):
+        parts.append(f"# Scraped content\n{res['scraped_content']}")
+    return "\n\n".join(parts)[:MAX_CONTEXT_CHARS]
+
+
+def history_messages(chat):
+    return [
+        ("human" if m["role"] == "user" else "ai", m["content"])
+        for m in chat[-MAX_TURNS * 2:]
+    ]
+
+
+def answer_question(res, question, use_web, timeout):
+    extra = ""
+    if use_web:
+        try:
+            extra = call_with_timeout(
+                lambda: to_text(build_search_agent().invoke({"messages": [(
+                    "user",
+                    f"Find information to answer this question about '{res['topic']}': {question}",
+                )]})),
+                timeout,
+            )
+        except Exception:
+            extra = ""  # fall back to the existing research only
+
+    payload = {
+        "context": build_context(res, extra),
+        "history": history_messages(res["chat"]),
+        "question": question,
+    }
+    last_err = None
+    for attempt in range(2):  # one retry for transient errors
+        try:
+            out = call_with_timeout(lambda: to_text(qa_chain.invoke(payload)), timeout)
+            if not out.strip():
+                raise ValueError("The model returned an empty answer.")
+            return out
+        except Exception as e:
+            last_err = e
+            if is_fatal(e):
+                break
+            time.sleep(2)
+    raise last_err
+
+
 # ---------------------------------------------------------------- state
 ss = st.session_state
 ss.setdefault("history", [])
@@ -308,6 +390,11 @@ with st.sidebar:
     )
     timeout = st.slider("Timeout per step (seconds)", 30, 600, 180, 30, disabled=running)
     show_raw = st.toggle("Show raw agent output", value=False, disabled=running)
+    use_web = st.toggle(
+        "Web search for follow-ups", value=False, disabled=running,
+        help="Off: answers come only from the research already done. "
+             "On: the search agent also looks up fresh info for each question (slower).",
+    )
 
     st.header("🕘 History")
     if not ss.history:
@@ -361,6 +448,11 @@ with c2:
     )
 if topic_error:
     st.caption(f"⚠️ {topic_error}")
+
+ex_cols = st.columns(len(EXAMPLES))
+for col, ex in zip(ex_cols, EXAMPLES):
+    col.button(ex, key=f"ex_{ex}", on_click=set_example, args=(ex,),
+               use_container_width=True, disabled=running)
 
 tracker_ph = st.empty()
 progress = st.empty()
@@ -482,3 +574,39 @@ if ss.current is not None:
                 st.markdown(res.get("scraped_content") or "—")
         else:
             st.caption("Enable **Show raw agent output** in the sidebar to see this.")
+
+    # ------------------------------------------------------------ follow-up Q&A
+    if report:
+        res.setdefault("chat", [])
+        st.divider()
+        h1, h2 = st.columns([5, 1], vertical_alignment="center")
+        h1.subheader("💬 Ask about this research")
+        if res["chat"] and h2.button("🧹 Clear chat", use_container_width=True, disabled=running):
+            res["chat"] = []
+            st.rerun()
+
+        if qa_chain is None:
+            st.info("The follow-up chat needs a `qa_chain` in your `agents.py`. Add this and restart:")
+            st.code(QA_SNIPPET, language="python")
+        else:
+            if not res["chat"]:
+                st.caption("Have a doubt about the report? Ask below. Answers are based on this research.")
+            for m in res["chat"]:
+                with st.chat_message(m["role"]):
+                    st.markdown(m["content"])
+
+            question = st.chat_input("Ask a follow-up question…", max_chars=MAX_Q_LEN,
+                                     disabled=running)
+            q = normalize_topic(question) if question else ""
+            if q:
+                with st.chat_message("user"):
+                    st.markdown(q)
+                with st.chat_message("assistant"):
+                    try:
+                        with st.spinner("Thinking…"):
+                            ans = answer_question(res, q, use_web, timeout)
+                        st.markdown(ans)
+                        res["chat"] += [{"role": "user", "content": q},
+                                        {"role": "assistant", "content": ans}]
+                    except Exception as e:
+                        st.error(f"Couldn't answer that: {friendly_error(e)}")
