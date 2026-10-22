@@ -13,6 +13,15 @@ load_dotenv()
 
 st.set_page_config(page_title="Research Agent", page_icon="🔎", layout="wide")
 
+# Deployment: copy Streamlit secrets into environment variables so agents.py / tools.py
+# (which read os.getenv) work on Streamlit Cloud. Locally, .env is used instead.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, (str, int, float)) and _k not in os.environ:
+            os.environ[_k] = str(_v)
+except Exception:
+    pass  # no secrets configured
+
 # Guard: agents.py missing / broken dependencies
 try:
     from agents import build_search_agent, build_scrap_agent, writer_chain, critic_chain
@@ -60,12 +69,6 @@ STEPS = [
     ("🌐", "Read", "Scraping the best source"),
     ("✍️", "Write", "Drafting the report"),
     ("🧐", "Critique", "Reviewing quality"),
-]
-
-EXAMPLES = [
-    "Solid-state battery breakthroughs",
-    "State of open-source LLMs",
-    "Impact of GLP-1 drugs on healthcare",
 ]
 
 # ---------------------------------------------------------------- styling
@@ -449,10 +452,6 @@ with c2:
 if topic_error:
     st.caption(f"⚠️ {topic_error}")
 
-ex_cols = st.columns(len(EXAMPLES))
-for col, ex in zip(ex_cols, EXAMPLES):
-    col.button(ex, key=f"ex_{ex}", on_click=set_example, args=(ex,),
-               use_container_width=True, disabled=running)
 
 tracker_ph = st.empty()
 progress = st.empty()
