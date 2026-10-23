@@ -10,12 +10,11 @@ def run_research_pipeline(topic: str):
 
     search_agent = build_search_agent()
     search_results = search_agent.invoke({
-        "message" : [("user", f"Find recent and relevant information on the topic: {topic}")]
+        "messages" : [("user", f"Find recent and relevant information on the topic: {topic}")]
     })
 
-    state['search_results'] = search_results[-1].content
+    state['search_results'] = search_results["messages"]
 
-    print("\n search result ",state['search_results'])
 
     print("\n"+" ="*50)
     print("step 2 - Reader agent is scraping top resources ...")
@@ -30,7 +29,7 @@ def run_research_pipeline(topic: str):
         )]
     })
 
-    state['scraped_content'] = reader_result[-1].content
+    state['scraped_content'] = reader_result['messages']
 
     print("\nscraped content: \n", state['scraped_content'])
 
@@ -55,7 +54,7 @@ def run_research_pipeline(topic: str):
     print("="*50)
 
     state['critique'] = critic_chain.invoke({
-        "report": state['report'][-1].content
+        "report": state['report'][0]
     })
 
     print("\n Critique\n", state['critique'])
