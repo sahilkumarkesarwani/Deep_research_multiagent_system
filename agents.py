@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-llm = ChatMistralAI(model="ministral-3b-2512", temperature=0)
+llm = ChatMistralAI(model="ministral-8b-2512", temperature=0)
+llm2 = ChatMistralAI(model="ministral-14b-2512", temperature=0)
 
 def build_search_agent():
     return create_agent(
@@ -62,7 +63,7 @@ critic_prompt = ChatPromptTemplate.from_messages([
     ])
 
 
-critic_chain = critic_prompt | llm | StrOutputParser()
+critic_chain = critic_prompt | llm2 | StrOutputParser()
 
 
 
@@ -75,4 +76,4 @@ qa_prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-qa_chain = qa_prompt | llm | StrOutputParser()
+qa_chain = qa_prompt | llm2 | StrOutputParser()

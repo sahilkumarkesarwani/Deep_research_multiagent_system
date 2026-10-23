@@ -136,7 +136,7 @@ Enter a topic when prompted. The output of each step is printed to the console.
 **Model**: change it in `agents.py`:
 
 ```python
-llm = ChatMistralAI(model="ministral-3b-2512", temperature=0)
+llm = ChatMistralAI(model="ministral-14b-2512", temperature=0)
 ```
 
 A larger Mistral model generally gives better reports and answers.

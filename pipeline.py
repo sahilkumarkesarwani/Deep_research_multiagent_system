@@ -1,22 +1,24 @@
 from agents import build_search_agent, build_scrap_agent, writer_chain, critic_chain
 
-def run_research_pipeline(topic: str):
+def run_research_pipeline(topic: str) -> dict:
 
     state = {}
 
-    print("\n"+" ="*50)
+    print("\n"+"="*50)
     print("step 1 - search agent is working ...")
     print("="*50)
 
     search_agent = build_search_agent()
     search_results = search_agent.invoke({
-        "messages" : [("user", f"Find recent and relevant information on the topic: {topic}")]
+        "messages" : [("user", f"Find recent and relevant and detailed information on the topic: {topic}")]
     })
 
-    state['search_results'] = search_results["messages"]
+    state['search_results'] = search_results['messages'][-1].content
+
+    print("\n Search result ", state['search_results'])
 
 
-    print("\n"+" ="*50)
+    print("\n"+"="*50)
     print("step 2 - Reader agent is scraping top resources ...")
     print("="*50)
 
@@ -24,12 +26,12 @@ def run_research_pipeline(topic: str):
     reader_result = reader_agent.invoke({
         "messages": [("user",
             f"Based on the following search results about '{topic}', "
-            f"pick the most relevant URL and scrape it for deeper content.\n\n"
-            f"Search Results:\n{state['search_results'][:800]}"
+            f"pick all the relevant URLs and scrape it for deeper content.\n\n"
+            f"Search Results:\n{state['search_results']}"
         )]
     })
 
-    state['scraped_content'] = reader_result['messages']
+    state['scraped_content'] = reader_result['messages'][-1].content
 
     print("\nscraped content: \n", state['scraped_content'])
 
@@ -54,7 +56,7 @@ def run_research_pipeline(topic: str):
     print("="*50)
 
     state['critique'] = critic_chain.invoke({
-        "report": state['report'][0]
+        "report": state['report'][-1].content
     })
 
     print("\n Critique\n", state['critique'])

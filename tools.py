@@ -20,7 +20,7 @@ def web_search(query: str) -> str:
     out = []
 
     for r in results['results']:
-        out.append(f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['content'][:300]}\n")
+        out.append(f"Title: {r['title']}\nURL: {r['url']}\nSnippet: {r['content']}\n")
 
  
     return "\n-----\n".join(out)
@@ -37,7 +37,7 @@ def scrap_url(url: str) -> str:
         soup = BeautifulSoup(response.text, 'html.parser')
         for tag in soup(["script", "style", "nav", "footer"]):
             tag.decompose()
-        return soup.get_text(separator=" ", strip=True)[:3000]
+        return soup.get_text(separator=" ", strip=True)
     except Exception as e:
         return f"Could not scrape the URL: {str(e)}"
 
