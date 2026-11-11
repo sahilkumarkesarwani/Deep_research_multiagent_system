@@ -6,7 +6,11 @@ python-dotenv
 
 rich
 
+langchain-groq
 langchain-mistralai
 tavily-python
 
 streamlit
+
+bcrypt
+sqlalchemy

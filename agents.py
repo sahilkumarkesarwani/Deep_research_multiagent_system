@@ -1,25 +1,25 @@
-from langchain.agents import create_agent
 from langchain_mistralai import ChatMistralAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
+from langgraph.prebuilt import create_react_agent
 from tools import web_search, scrap_url
 from dotenv import load_dotenv
 
 load_dotenv()
 
-llm = ChatMistralAI(model="ministral-8b-2512", temperature=0)
-llm2 = ChatMistralAI(model="ministral-14b-2512", temperature=0)
+agent_llm = ChatMistralAI(model="ministral-8b-2512", temperature=0)
+chain_llm = ChatMistralAI(model="mistral-large-latest", temperature=0)
 
 def build_search_agent():
-    return create_agent(
-        model = llm,
-        tools = [web_search]
+    return create_react_agent(
+        model=agent_llm,
+        tools=[web_search]
     )
 
 def build_scrap_agent():
-    return create_agent(
-        model = llm,
-        tools = [scrap_url]
+    return create_react_agent(
+        model=agent_llm,
+        tools=[scrap_url]
     )
 
 writer_prompt = ChatPromptTemplate.from_messages([
@@ -38,7 +38,7 @@ writer_prompt = ChatPromptTemplate.from_messages([
         Be detailed, factual and professional."""),
     ])
 
-writer_chain = writer_prompt | llm | StrOutputParser()
+writer_chain = writer_prompt | chain_llm | StrOutputParser()
 
 critic_prompt = ChatPromptTemplate.from_messages([
 
@@ -63,7 +63,7 @@ critic_prompt = ChatPromptTemplate.from_messages([
     ])
 
 
-critic_chain = critic_prompt | llm2 | StrOutputParser()
+critic_chain = critic_prompt | chain_llm | StrOutputParser()
 
 
 
@@ -76,4 +76,4 @@ qa_prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-qa_chain = qa_prompt | llm2 | StrOutputParser()
+qa_chain = qa_prompt | chain_llm | StrOutputParser()

@@ -56,7 +56,7 @@ def run_research_pipeline(topic: str) -> dict:
     print("="*50)
 
     state['critique'] = critic_chain.invoke({
-        "report": state['report'][-1].content
+        "report": state['report']
     })
 
     print("\n Critique\n", state['critique'])

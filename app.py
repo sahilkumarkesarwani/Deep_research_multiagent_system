@@ -13,16 +13,19 @@ load_dotenv()
 
 st.set_page_config(page_title="Research Agent", page_icon="🔎", layout="wide")
 
-# Deployment: copy Streamlit secrets into environment variables so agents.py / tools.py
-# (which read os.getenv) work on Streamlit Cloud. Locally, .env is used instead.
 try:
     for _k, _v in st.secrets.items():
         if isinstance(_v, (str, int, float)) and _k not in os.environ:
             os.environ[_k] = str(_v)
 except Exception:
-    pass  # no secrets configured
+    pass 
 
-# Guard: agents.py missing / broken dependencies
+from auth import is_logged_in, current_user_id, current_username, login_user, register_user, logout
+from database import (
+    init_db, load_research_runs, save_research_run, clear_all_runs, add_chat_message
+)
+init_db()
+
 try:
     from agents import build_search_agent, build_scrap_agent, writer_chain, critic_chain
 except Exception:
@@ -33,21 +36,20 @@ except Exception:
     st.code(traceback.format_exc())
     st.stop()
 
-try:  # follow-up Q&A chain (add it to agents.py, see the snippet shown in the app)
+try:  
     from agents import qa_chain
 except ImportError:
     qa_chain = None
 
-# ---------------------------------------------------------------- config
-REQUIRED_KEYS = ["MISTRAL_API_KEY", "TAVILY_API_KEY"]  # edit to match your .env
-MIN_LEN, MAX_LEN = 3, 300      # topic length limits
-MAX_RETRIES = 2                # automatic retries per step (transient errors only)
-MAX_HISTORY = 15               # runs kept in memory
+REQUIRED_KEYS = ["MISTRAL_API_KEY", "TAVILY_API_KEY"] 
+MIN_LEN, MAX_LEN = 3, 300      
+MAX_RETRIES = 2               
+MAX_HISTORY = 15              
 STEP_KEYS = ["search_results", "scraped_content", "report", "critique"]
-OPTIONAL_STEPS = {1, 3}        # pipeline continues if these fail (Read, Critique)
-MAX_Q_LEN = 500                # follow-up question length limit
-MAX_CONTEXT_CHARS = 12000      # research text sent with each follow-up
-MAX_TURNS = 8                  # previous chat turns sent to the model
+OPTIONAL_STEPS = {1, 3}        
+MAX_Q_LEN = 500                
+MAX_CONTEXT_CHARS = 12000     
+MAX_TURNS = 8
 
 QA_SNIPPET = '''# add to agents.py (replace `llm` with the model variable you already use)
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -71,9 +73,7 @@ STEPS = [
     ("🧐", "Critique", "Reviewing quality"),
 ]
 
-# ---------------------------------------------------------------- styling
-st.markdown(
-    """
+SHARED_CSS = """
 <style>
 .block-container {padding-top: 2rem; max-width: 1100px;}
 .hero h1 {
@@ -100,14 +100,75 @@ st.markdown(
       border:1px solid rgba(128,128,128,.25); text-decoration:none !important;
       word-break: break-all; font-size:.9rem;}
 .src:hover {background: rgba(99,102,241,.12);}
+/* Auth form card */
+.auth-card {
+    max-width: 420px; margin: 4rem auto; padding: 2rem 2.4rem;
+    border: 1px solid rgba(128,128,128,.25); border-radius: 16px;
+    background: rgba(128,128,128,.05);
+}
+.auth-card h2 {margin-bottom: 1.2rem;}
 @media (max-width: 700px) {.steps {grid-template-columns: repeat(2, 1fr);}}
 </style>
-""",
-    unsafe_allow_html=True,
-)
+"""
+st.markdown(SHARED_CSS, unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------- helpers
+def render_auth_page():
+    """Show Login / Register form when no user is logged in."""
+    st.markdown(
+        '<div class="hero"><h1>Multi-Agent Research</h1>'
+        "<p>Search, read, write and critique, handled by a team of AI agents.</p></div>",
+        unsafe_allow_html=True,
+    )
+
+    tab_login, tab_register = st.tabs(["🔑 Login", "📝 Create Account"])
+
+    with tab_login:
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.subheader("Welcome back 👋")
+        with st.form("login_form"):
+            identifier = st.text_input("Username or Email")
+            password   = st.text_input("Password", type="password")
+            submitted  = st.form_submit_button("Login", use_container_width=True, type="primary")
+
+        if submitted:
+            if not identifier or not password:
+                st.error("Please fill in both fields.")
+            else:
+                ok, msg = login_user(identifier, password)
+                if ok:
+                    st.success("Logged in!")
+                    st.rerun()
+                else:
+                    st.error(msg)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ---- Register tab
+    with tab_register:
+        st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+        st.subheader("Create your account 🚀")
+        with st.form("register_form"):
+            new_username = st.text_input("Username", help="3–30 chars, letters/digits/underscores only")
+            new_email    = st.text_input("Email")
+            new_pass     = st.text_input("Password", type="password", help="Minimum 8 characters")
+            new_confirm  = st.text_input("Confirm Password", type="password")
+            reg_submit   = st.form_submit_button("Create Account", use_container_width=True, type="primary")
+
+        if reg_submit:
+            ok, msg = register_user(new_username, new_email, new_pass, new_confirm)
+            if ok:
+                st.success(msg + " → Switch to the Login tab.")
+            else:
+                st.error(msg)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+# If not logged in → show auth page and stop
+if not is_logged_in():
+    render_auth_page()
+    st.stop()
+
+
 def to_text(result) -> str:
     """Turn whatever an agent/chain returns into a plain string."""
     if isinstance(result, str):
@@ -127,7 +188,7 @@ def to_text(result) -> str:
 def extract_urls(*texts, limit=50) -> list[str]:
     seen, urls = set(), []
     for t in texts:
-        for u in re.findall(r"https?://[^\s\)\]>\"'<]+", t or ""):
+        for u in re.findall(r"https?://[^\s\)\]\>\"'<]+", t or ""):
             u = u.rstrip(".,;:*")
             if u not in seen:
                 seen.add(u)
@@ -214,8 +275,6 @@ def render_tracker(ph, current=None, timings=None, failed=None, skipped=()):
         )
     ph.markdown(f'<div class="steps">{"".join(cards)}</div>', unsafe_allow_html=True)
 
-
-# ---------------------------------------------------------------- pipeline
 def new_state(topic):
     return {"topic": topic, "timings": {}, "warnings": {}, "error": None, "chat": []}
 
@@ -251,6 +310,8 @@ def run_step(i, state, scrape_limit):
 
 def run_pipeline(state, start, scrape_limit, timeout, tracker_ph, progress, status_line):
     state["error"] = None
+    user_id = current_user_id()
+
     for i in range(start, len(STEPS)):
         render_tracker(tracker_ph, current=i, timings=state["timings"],
                        skipped=set(state["warnings"]))
@@ -279,7 +340,6 @@ def run_pipeline(state, start, scrape_limit, timeout, tracker_ph, progress, stat
             state[STEP_KEYS[i]] = out
             state["timings"][i] = elapsed
         elif i in OPTIONAL_STEPS:
-            # graceful degradation: keep going without this step
             state[STEP_KEYS[i]] = ""
             state["timings"][i] = elapsed
             state["warnings"][i] = f"{STEPS[i][1]} step skipped: {friendly_error(last_err)}"
@@ -291,11 +351,21 @@ def run_pipeline(state, start, scrape_limit, timeout, tracker_ph, progress, stat
             }
             render_tracker(tracker_ph, timings=state["timings"], failed=i,
                            skipped=set(state["warnings"]))
+            # Save partial state to DB
+            if user_id:
+                db_id = save_research_run(user_id, state)
+                state["db_id"] = db_id
             return state
 
     state["total_time"] = sum(state["timings"].values())
     state["finished"] = datetime.now().strftime("%H:%M")
     render_tracker(tracker_ph, timings=state["timings"], skipped=set(state["warnings"]))
+
+    # Persist completed run to DB
+    if user_id:
+        db_id = save_research_run(user_id, state)
+        state["db_id"] = db_id
+
     return state
 
 
@@ -352,16 +422,20 @@ def answer_question(res, question, use_web, timeout):
     raise last_err
 
 
-# ---------------------------------------------------------------- state
 ss = st.session_state
+user_id = current_user_id()
+
+if not ss.get("db_loaded"):
+    ss["history"] = load_research_runs(user_id)
+    ss["db_loaded"] = True
+
 ss.setdefault("history", [])
 ss.setdefault("current", None)
 ss.setdefault("topic_input", "")
 ss.setdefault("running", False)
 
-# A job is created by a button callback; consume it exactly once.
 job = ss.pop("job", None)
-if ss.running and not job:  # stale flag from an interrupted run
+if ss.running and not job: 
     ss.running = False
 running = ss.running
 if ss.current is not None and ss.current >= len(ss.history):
@@ -381,9 +455,14 @@ def start_retry(idx):
     ss.job = {"retry_idx": idx}
     ss.running = True
 
-
-# ---------------------------------------------------------------- sidebar
 with st.sidebar:
+    # User profile section
+    st.markdown(f"### 👤 {current_username()}")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout()
+
+    st.divider()
+
     st.header("⚙️ Settings")
     scrape_limit = st.slider(
         "Search text passed to reader (chars)",
@@ -412,11 +491,11 @@ with st.sidebar:
             ss.current = real_idx
             st.rerun()
     if ss.history and st.button("🗑️ Clear history", use_container_width=True, disabled=running):
+        clear_all_runs(user_id)
         ss.history = []
         ss.current = None
         st.rerun()
 
-# ---------------------------------------------------------------- header + input
 st.markdown(
     '<div class="hero"><h1>Multi-Agent Research</h1>'
     "<p>Search, read, write and critique, handled by a team of AI agents.</p></div>",
@@ -457,7 +536,6 @@ tracker_ph = st.empty()
 progress = st.empty()
 status_line = st.empty()
 
-# ---------------------------------------------------------------- run
 if job:
     try:
         if "retry_idx" in job:
@@ -485,7 +563,7 @@ if job:
         ss.just_finished = "error" if state["error"] else "ok"
     finally:
         ss.running = False
-    st.rerun()  # re-enable widgets and show results
+    st.rerun() 
 
 elif ss.current is not None:
     cur = ss.history[ss.current]
@@ -502,7 +580,6 @@ elif ss.current is not None:
     elif flash == "error":
         status_line.caption("❌ Stopped because of an error")
 
-# ---------------------------------------------------------------- results
 if ss.current is not None:
     res = ss.history[ss.current]
 
@@ -574,7 +651,6 @@ if ss.current is not None:
         else:
             st.caption("Enable **Show raw agent output** in the sidebar to see this.")
 
-    # ------------------------------------------------------------ follow-up Q&A
     if report:
         res.setdefault("chat", [])
         st.divider()
@@ -582,6 +658,9 @@ if ss.current is not None:
         h1.subheader("💬 Ask about this research")
         if res["chat"] and h2.button("🧹 Clear chat", use_container_width=True, disabled=running):
             res["chat"] = []
+            # Persist cleared chat to DB
+            if user_id and res.get("db_id"):
+                save_research_run(user_id, res)
             st.rerun()
 
         if qa_chain is None:
@@ -607,5 +686,9 @@ if ss.current is not None:
                         st.markdown(ans)
                         res["chat"] += [{"role": "user", "content": q},
                                         {"role": "assistant", "content": ans}]
+                        # Persist new messages to DB
+                        if user_id and res.get("db_id"):
+                            add_chat_message(res["db_id"], "user", q)
+                            add_chat_message(res["db_id"], "assistant", ans)
                     except Exception as e:
                         st.error(f"Couldn't answer that: {friendly_error(e)}")
