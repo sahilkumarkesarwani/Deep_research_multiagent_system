@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-agent_llm = ChatMistralAI(model="ministral-8b-2512", temperature=0)
-chain_llm = ChatMistralAI(model="mistral-large-latest", temperature=0)
+agent_llm = ChatMistralAI(model="open-mistral-nemo", temperature=0)
+chain_llm = ChatMistralAI(model="open-mistral-nemo", temperature=0)
 
 def build_search_agent():
     return create_react_agent(
